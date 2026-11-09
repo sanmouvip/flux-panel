@@ -3,15 +3,14 @@ package com.admin.controller;
 import com.admin.common.aop.LogAnnotation;
 import com.admin.common.dto.FlowDto;
 import com.admin.common.dto.GostConfigDto;
-import com.admin.common.lang.R;
 import com.admin.common.task.CheckGostConfigAsync;
 import com.admin.common.utils.AESCrypto;
 import com.admin.common.utils.GostUtil;
 import com.admin.entity.*;
+import com.admin.service.ForwardTrafficService;
 import com.alibaba.fastjson.JSON;
 import com.alibaba.fastjson.JSONObject;
 import com.baomidou.mybatisplus.core.conditions.query.QueryWrapper;
-import com.baomidou.mybatisplus.core.conditions.update.UpdateWrapper;
 import org.springframework.web.bind.annotation.*;
 import lombok.extern.slf4j.Slf4j;
 
@@ -38,10 +37,7 @@ import java.util.stream.Collectors;
  * 8. 检查转发状态，状态不为1时暂停对应转发
  * 9. 检查用户隧道权限状态，状态不为1时暂停对应转发
  * <p>
- * 并发安全解决方案：
- * 1. 使用UpdateWrapper进行数据库层面的原子更新操作，避免读取-修改-写入的竞态条件
- * 2. 使用synchronized锁确保同一用户/隧道的流量更新串行执行
- * 3. 这样可以避免相同用户相同隧道不同转发同时上报时流量统计丢失的问题
+ * 流量累计值与小时明细通过同一数据库事务更新。
  */
 @RestController
 @RequestMapping("/flow")
@@ -54,16 +50,14 @@ public class FlowController extends BaseController {
     private static final String DEFAULT_USER_TUNNEL_ID = "0";
     private static final long BYTES_TO_GB = 1024L * 1024L * 1024L;
 
-    // 用于同步相同用户和隧道的流量更新操作
-    private static final ConcurrentHashMap<String, Object> USER_LOCKS = new ConcurrentHashMap<>();
-    private static final ConcurrentHashMap<String, Object> TUNNEL_LOCKS = new ConcurrentHashMap<>();
-    private static final ConcurrentHashMap<String, Object> FORWARD_LOCKS = new ConcurrentHashMap<>();
-
     // 缓存加密器实例，避免重复创建
     private static final ConcurrentHashMap<String, AESCrypto> CRYPTO_CACHE = new ConcurrentHashMap<>();
 
     @Resource
     CheckGostConfigAsync checkGostConfigAsync;
+
+    @Resource
+    ForwardTrafficService forwardTrafficService;
 
     /**
      * 加密消息包装器
@@ -226,10 +220,8 @@ public class FlowController extends BaseController {
         //  处理流量倍率及单双向计算
         FlowDto flowStats = filterFlowData(flowDataList, forward, flowType);
 
-        // 先更新所有流量统计 - 确保流量数据的一致性
-        updateForwardFlow(forwardId, flowStats);
-        updateUserFlow(userId, flowStats);
-        updateUserTunnelFlow(userTunnelId, flowStats);
+        // 使用计费后的流量更新累计值、小时明细和配额用量
+        forwardTrafficService.record(forward == null ? null : forward.getId(), userId, userTunnelId, flowStats);
 
         // 7. 检查和服务暂停操作
         String name = buildServiceName(forwardId, userId, userTunnelId);
@@ -338,58 +330,6 @@ public class FlowController extends BaseController {
         Tunnel tunnel = tunnelService.getById(forward.getTunnelId());
         if (tunnel == null) return defaultFlowType;
         return tunnel.getFlow();
-    }
-
-    private void updateForwardFlow(String forwardId, FlowDto flowStats) {
-        // 对相同转发的流量更新进行同步，避免并发覆盖
-        synchronized (getForwardLock(forwardId)) {
-            UpdateWrapper<Forward> updateWrapper = new UpdateWrapper<>();
-            updateWrapper.eq("id", forwardId);
-            updateWrapper.setSql("in_flow = in_flow + " + flowStats.getD());
-            updateWrapper.setSql("out_flow = out_flow + " + flowStats.getU());
-
-            forwardService.update(null, updateWrapper);
-        }
-    }
-
-    private void updateUserFlow(String userId, FlowDto flowStats) {
-        // 对相同用户的流量更新进行同步，避免并发覆盖
-        synchronized (getUserLock(userId)) {
-            UpdateWrapper<User> updateWrapper = new UpdateWrapper<>();
-            updateWrapper.eq("id", userId);
-
-            updateWrapper.setSql("in_flow = in_flow + " + flowStats.getD());
-            updateWrapper.setSql("out_flow = out_flow + " + flowStats.getU());
-
-            userService.update(null, updateWrapper);
-        }
-    }
-
-    private void updateUserTunnelFlow(String userTunnelId, FlowDto flowStats) {
-        if (Objects.equals(userTunnelId, DEFAULT_USER_TUNNEL_ID)) {
-            return; // 默认隧道不需要更新，返回成功
-        }
-
-        // 对相同用户隧道的流量更新进行同步，避免并发覆盖
-        synchronized (getTunnelLock(userTunnelId)) {
-            UpdateWrapper<UserTunnel> updateWrapper = new UpdateWrapper<>();
-            updateWrapper.eq("id", userTunnelId);
-            updateWrapper.setSql("in_flow = in_flow + " + flowStats.getD());
-            updateWrapper.setSql("out_flow = out_flow + " + flowStats.getU());
-            userTunnelService.update(null, updateWrapper);
-        }
-    }
-
-    private Object getUserLock(String userId) {
-        return USER_LOCKS.computeIfAbsent(userId, k -> new Object());
-    }
-
-    private Object getTunnelLock(String userTunnelId) {
-        return TUNNEL_LOCKS.computeIfAbsent(userTunnelId, k -> new Object());
-    }
-
-    private Object getForwardLock(String forwardId) {
-        return FORWARD_LOCKS.computeIfAbsent(forwardId, k -> new Object());
     }
 
     private boolean isValidNode(String secret) {

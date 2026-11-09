@@ -37,6 +37,9 @@ import java.util.stream.Collectors;
 @Service
 public class ForwardServiceImpl extends ServiceImpl<ForwardMapper, Forward> implements ForwardService {
 
+    @Resource
+    ForwardTrafficService forwardTrafficService;
+
     // 常量定义
     private static final String GOST_SUCCESS_MSG = "OK";
     private static final String GOST_NOT_FOUND_MSG = "not found";
@@ -429,6 +432,23 @@ public class ForwardServiceImpl extends ServiceImpl<ForwardMapper, Forward> impl
         boolean result = this.updateById(forward);
 
         return result ? R.ok("服务已" + operation) : R.err("更新状态失败");
+    }
+
+    @Override
+    public R getHourlyTraffic(Long id) {
+        if (validateForwardExists(id, getCurrentUserInfo()) == null) {
+            return R.err("转发不存在或无权访问");
+        }
+        return R.ok(forwardTrafficService.hourly(id));
+    }
+
+    @Override
+    public R resetTraffic(Long id) {
+        if (validateForwardExists(id, getCurrentUserInfo()) == null) {
+            return R.err("转发不存在或无权访问");
+        }
+        forwardTrafficService.reset(id);
+        return R.ok();
     }
 
     @Override

@@ -42,6 +42,9 @@ import {
   pauseForwardService,
   resumeForwardService,
   diagnoseForward,
+  getForwardHourlyTraffic,
+  resetForwardTraffic,
+  type ForwardHourlyTraffic,
   updateForwardOrder
 } from "@/api";
 import { JwtUtil } from "@/utils/jwt";
@@ -156,6 +159,11 @@ export default function ForwardPage() {
   const [deleteModalOpen, setDeleteModalOpen] = useState(false);
   const [addressModalOpen, setAddressModalOpen] = useState(false);
   const [diagnosisModalOpen, setDiagnosisModalOpen] = useState(false);
+  const [trafficForward, setTrafficForward] = useState<Forward | null>(null);
+  const [hourlyTraffic, setHourlyTraffic] = useState<ForwardHourlyTraffic[] | null>(null);
+  const [trafficError, setTrafficError] = useState('');
+  const [confirmTrafficReset, setConfirmTrafficReset] = useState(false);
+  const [resettingTraffic, setResettingTraffic] = useState(false);
   const [isEdit, setIsEdit] = useState(false);
   const [submitLoading, setSubmitLoading] = useState(false);
   const [deleteLoading, setDeleteLoading] = useState(false);
@@ -259,6 +267,53 @@ export default function ForwardPage() {
       }
     } catch (error) {
       console.warn('无法保存显示模式到localStorage:', error);
+    }
+  };
+
+  useEffect(() => {
+    if (!trafficForward) return;
+
+    let active = true;
+    getForwardHourlyTraffic(trafficForward.id)
+      .then(response => {
+        if (!active) return;
+        if (response.code === 0) {
+          setHourlyTraffic(response.data);
+        } else {
+          setTrafficError(response.msg || '无法获取小时流量');
+        }
+      })
+      .catch(() => {
+        if (active) setTrafficError('无法获取小时流量');
+      });
+
+    return () => { active = false; };
+  }, [trafficForward]);
+
+  const openTraffic = (forward: Forward) => {
+    setHourlyTraffic(null);
+    setTrafficError('');
+    setConfirmTrafficReset(false);
+    setTrafficForward(forward);
+  };
+
+  const handleTrafficReset = async () => {
+    if (!trafficForward) return;
+
+    setResettingTraffic(true);
+    try {
+      const response = await resetForwardTraffic(trafficForward.id);
+      if (response.code !== 0) {
+        toast.error(response.msg || '重置失败');
+        return;
+      }
+      setConfirmTrafficReset(false);
+      toast.success('该转发的累计流量已重置');
+      await loadData(false);
+    } catch {
+      toast.error('重置失败');
+    } finally {
+      setResettingTraffic(false);
     }
   };
 
@@ -1286,6 +1341,14 @@ export default function ForwardPage() {
             </div>
           </div>
           
+          <Button
+            size="sm"
+            variant="flat"
+            className="w-full mt-3"
+            onPress={() => openTraffic(forward)}
+          >
+            流量明细
+          </Button>
           <div className="flex gap-1.5 mt-3">
             <Button
               size="sm"
@@ -1354,6 +1417,73 @@ export default function ForwardPage() {
   return (
     
       <div className="px-3 lg:px-6 py-8">
+        <Modal
+          isOpen={trafficForward !== null}
+          onClose={() => setTrafficForward(null)}
+          isDismissable={!resettingTraffic}
+          isKeyboardDismissDisabled={resettingTraffic}
+          hideCloseButton={resettingTraffic}
+          scrollBehavior="inside"
+          size="lg"
+        >
+          <ModalContent>
+            <ModalHeader>{trafficForward?.name} · 小时流量</ModalHeader>
+            <ModalBody>
+              <p className="text-sm text-default-500">
+                显示当前小时及此前 23 小时，按浏览器时区显示。流量按节点上报时间归入各小时，无上报记录显示为 0。
+              </p>
+              {trafficError ? (
+                <p role="alert" className="text-danger">{trafficError}</p>
+              ) : hourlyTraffic ? (
+                <table className="w-full text-sm tabular-nums">
+                  <thead>
+                    <tr>
+                      <th scope="col" className="text-left">小时起点</th>
+                      <th scope="col" className="text-right">下载</th>
+                      <th scope="col" className="text-right">上传</th>
+                      <th scope="col" className="text-right">合计</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {hourlyTraffic.map(hour => (
+                      <tr key={hour.hourStart} className="border-t border-divider">
+                        <td className="py-1.5">
+                          {new Date(hour.hourStart).toLocaleString(undefined, {
+                            month: 'numeric', day: 'numeric', hour: '2-digit',
+                            minute: '2-digit', timeZoneName: 'short',
+                          })}
+                        </td>
+                        <td className="text-right">{formatFlow(hour.inFlow)}</td>
+                        <td className="text-right">{formatFlow(hour.outFlow)}</td>
+                        <td className="text-right">{formatFlow(hour.inFlow + hour.outFlow)}</td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              ) : <Spinner size="sm" label="正在读取流量" />}
+            </ModalBody>
+            <ModalFooter className="flex-wrap">
+              {confirmTrafficReset ? (
+                <>
+                  <p className="w-full text-sm">
+                    确认清零这条转发的累计流量？小时明细、账号及隧道配额会保留。
+                  </p>
+                  <Button variant="flat" isDisabled={resettingTraffic} onPress={() => setConfirmTrafficReset(false)}>
+                    取消
+                  </Button>
+                  <Button color="danger" isLoading={resettingTraffic} onPress={handleTrafficReset}>
+                    确认重置
+                  </Button>
+                </>
+              ) : (
+                <Button color="danger" variant="flat" onPress={() => setConfirmTrafficReset(true)}>
+                  重置累计流量
+                </Button>
+              )}
+            </ModalFooter>
+          </ModalContent>
+        </Modal>
+
         {/* 页面头部 */}
         <div className="flex items-center justify-between mb-6">
           <div className="flex-1">

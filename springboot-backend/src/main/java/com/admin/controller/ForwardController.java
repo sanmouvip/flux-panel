@@ -1,7 +1,6 @@
 package com.admin.controller;
 
 import com.admin.common.aop.LogAnnotation;
-import com.admin.common.annotation.RequireRole;
 import com.admin.common.dto.ForwardDto;
 import com.admin.common.dto.ForwardUpdateDto;
 import com.admin.common.lang.R;
@@ -10,6 +9,8 @@ import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.validation.annotation.Validated;
 import org.springframework.web.bind.annotation.*;
 
+import javax.validation.constraints.NotNull;
+import javax.validation.constraints.Positive;
 import java.util.Map;
 
 /**
@@ -38,6 +39,20 @@ public class ForwardController extends BaseController {
     @PostMapping("/list")
     public R readAll() {
         return forwardService.getAllForwards();
+    }
+
+    public record TrafficRequest(@NotNull @Positive Long id) {}
+
+    @LogAnnotation
+    @PostMapping("/traffic/hourly")
+    public R hourlyTraffic(@Validated @RequestBody TrafficRequest request) {
+        return forwardService.getHourlyTraffic(request.id());
+    }
+
+    @LogAnnotation
+    @PostMapping("/traffic/reset")
+    public R resetTraffic(@Validated @RequestBody TrafficRequest request) {
+        return forwardService.resetTraffic(request.id());
     }
 
     @LogAnnotation

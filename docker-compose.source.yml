@@ -1,0 +1,10 @@
+services:
+  backend:
+    image: flux-panel-backend:local
+    pull_policy: build
+    build: ./springboot-backend
+
+  frontend:
+    image: flux-panel-frontend:local
+    pull_policy: build
+    build: ./vite-frontend

@@ -61,6 +61,17 @@ export const pauseForwardService = (forwardId: number) => Network.post("/forward
 export const resumeForwardService = (forwardId: number) => Network.post("/forward/resume", { id: forwardId });
 
 // 转发诊断操作
+export interface ForwardHourlyTraffic {
+  hourStart: number;
+  inFlow: number;
+  outFlow: number;
+}
+
+export const getForwardHourlyTraffic = (id: number) =>
+  Network.post<ForwardHourlyTraffic[]>("/forward/traffic/hourly", { id });
+export const resetForwardTraffic = (id: number) =>
+  Network.post("/forward/traffic/reset", { id });
+
 export const diagnoseForward = (forwardId: number) => Network.post("/forward/diagnose", { forwardId });
 
 // 转发排序操作

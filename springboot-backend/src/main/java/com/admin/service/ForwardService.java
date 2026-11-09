@@ -30,6 +30,10 @@ public interface ForwardService extends IService<Forward> {
      */
     R getAllForwards();
 
+    R getHourlyTraffic(Long id);
+
+    R resetTraffic(Long id);
+
     /**
      * 更新端口转发
      * @param forwardUpdateDto 更新数据

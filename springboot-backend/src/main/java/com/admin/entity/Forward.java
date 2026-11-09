@@ -1,6 +1,7 @@
 package com.admin.entity;
 
-import java.io.Serializable;
+import com.baomidou.mybatisplus.annotation.FieldStrategy;
+import com.baomidou.mybatisplus.annotation.TableField;
 import lombok.Data;
 import lombok.EqualsAndHashCode;
 
@@ -36,8 +37,10 @@ public class Forward extends BaseEntity{
 
     private String strategy;
 
+    @TableField(updateStrategy = FieldStrategy.NEVER)
     private Long inFlow;
 
+    @TableField(updateStrategy = FieldStrategy.NEVER)
     private Long outFlow;
 
     private Integer inx;

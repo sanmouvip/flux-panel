@@ -80,7 +80,21 @@
 ```
 ---
 ### Docker Compose部署
-#### 快速部署
+#### 从本仓库源码构建面板
+
+克隆本仓库并进入仓库目录。新部署时在仓库根目录创建 `.env`，配置 `DB_NAME`、`DB_USER`、`DB_PASSWORD`、`JWT_SECRET`、`BACKEND_PORT` 和 `FRONTEND_PORT`。数据库用户名使用非 `root` 用户，密码和 JWT 密钥使用各自独立的随机值。
+
+```bash
+docker compose -f docker-compose-v4.yml -f docker-compose.source.yml up -d --build
+```
+
+IPv6 部署把命令中的 `docker-compose-v4.yml` 换为 `docker-compose-v6.yml`。两份配置合用时，面板前后端由本仓库源码构建。节点沿用原有上报接口。
+
+升级已有部署时，先备份数据库，复用原来的 `.env`、Compose 项目名和 `mysql_data` 数据卷。若源码放在不同目录，请在 Compose 命令中用 `-p` 指定原项目名。后端启动时会自动创建小时流量表，数据库账号需要该库的建表权限。
+
+在转发卡片打开「流量明细」可查看当前及此前 23 个小时的上传、下载和合计。小时明细从新版开始按节点上报时间记录，升级前的累计数据无法拆分到各小时。「重置累计流量」只清零当前转发的累计值，保留小时明细、用户和隧道的用量及配额。
+
+#### 原版镜像快速部署
 
 面板端：
 ```bash

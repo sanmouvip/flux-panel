@@ -80,6 +80,16 @@
 ```
 ---
 ### Docker Compose部署
+#### 一键安装 v1.0.0
+
+在已安装 Docker Compose 的 Linux x86_64 服务器上执行。脚本下载固定版本的源码，生成数据库密码和 JWT 密钥，再构建并启动面板。
+
+```bash
+curl -fL https://raw.githubusercontent.com/sanmouvip/flux-panel/v1.0.0/install-panel.sh -o install-panel.sh && bash install-panel.sh
+```
+
+面板默认使用 `6366`，节点连接后端使用 `6365`。IPv6 部署在 `bash install-panel.sh` 后加 `--ipv6`。脚本用于全新安装，已有面板请按下文的升级步骤操作。
+
 #### 从本仓库源码构建面板
 
 克隆本仓库并进入仓库目录。新部署时在仓库根目录创建 `.env`，配置 `DB_NAME`、`DB_USER`、`DB_PASSWORD`、`JWT_SECRET`、`BACKEND_PORT` 和 `FRONTEND_PORT`。数据库用户名使用非 `root` 用户，密码和 JWT 密钥使用各自独立的随机值。
